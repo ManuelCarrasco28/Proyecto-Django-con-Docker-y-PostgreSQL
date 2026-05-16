@@ -34,12 +34,25 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    
+    # Apps del proyecto (ya existían desde sesión 2)
     'envios',
     'clientes',
     'rutas',
+    'api',
+
+
+    # Nuevas librerías de API
+    'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
+    'django_filters',
+    'drf_spectacular',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware', # <-- NUEVO: debe ir PRIMERO
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -136,3 +149,132 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_COOKIE_AGE = 60 * 60 * 8  # 8 horas
 SESSION_COOKIE_SECURE = False     # True en producción
 SESSION_COOKIE_NAME = 'encomiendas_session'
+
+from datetime import timedelta
+
+# ── Django REST Framework ─────────────────────────────────────────
+REST_FRAMEWORK = {
+    # Autenticación: JWT por defecto para toda la API
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    # Permisos: requiere autenticación por defecto
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    # Paginación: 15 registros por página
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 15,
+    # Documentación automática con drf-spectacular
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # Filtros: django-filter como backend por defecto
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
+    # ── NUEVAS claves de versionado ───────────────────────────────
+    'DEFAULT_VERSIONING_CLASS': 'rest_framework.versioning.URLPathVersioning',
+    'ALLOWED_VERSIONS': ['v1', 'v2'], # versiones permitidas
+    'DEFAULT_VERSION': 'v1', # versión si no se especifica
+    'VERSION_PARAM': 'version', # nombre del parámetro en la URL
+
+    # ── Throttling (Control de tasa) ──────────────────────────────
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/hour',
+        'user': '500/hour',
+        'empleado': '100/min',
+        'cambio_estado': '30/hour',
+        'login_attempt': '5/min',
+    },
+
+    # ── Manejo de errores personalizado ──────────────────────────
+    'EXCEPTION_HANDLER': 'api.exceptions.encomiendas_exception_handler',
+}
+
+# ── JWT: configuración de tokens ──────────────────────────────────
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+}
+
+# ── CORS: Cross-Origin Resource Sharing ──────────────────────────
+# En desarrollo permitimos todo, en producción restringimos
+CORS_ALLOW_ALL_ORIGINS = True # Cambiar a False en producción
+
+CORS_ALLOWED_ORIGINS = [
+    'https://encomiendas-frontend.vercel.app',
+    'https://admin.encomiendas.pe',
+    'http://localhost:3000', # React en desarrollo
+    'http://localhost:5173', # Vite en desarrollo
+]
+
+# Permitir envío de cookies/credenciales (necesario para HttpOnly JWT)
+CORS_ALLOW_CREDENTIALS = True
+
+# Cabeceras permitidas en las peticiones
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'authorization',
+    'content-type',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-api-version', # Para nuestro soporte de versiones
+]
+
+# Métodos HTTP permitidos
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+# ── Documentación de la API ───────────────────────────────────────
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'API Sistema de Gestión de Encomiendas',
+    'DESCRIPTION': '''
+ API REST para gestionar el ciclo de vida de encomiendas.
+ Incluye registro de envíos, cambio de estado, historial
+y estadísticas del sistema.
+''',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SORT_OPERATIONS': False,
+    'TAGS': [
+        {'name': 'Encomiendas', 'description': 'Gestión de envíos'},
+        {'name': 'Clientes', 'description': 'Listado de clientes activos'},
+        {'name': 'Rutas', 'description': 'Rutas disponibles'},
+        {'name': 'Auth', 'description': 'Autenticación JWT'},
+    ],
+}
+# ── Configuración de Django Silk (Solo Desarrollo) ────────────────
+if DEBUG:
+    INSTALLED_APPS += ['silk']
+    MIDDLEWARE = ['silk.middleware.SilkyMiddleware'] + MIDDLEWARE
+    SILKY_PYTHON_PROFILER = True
+    SILKY_META = True # mostrar queries de silk en el panel
+
+# ── Configuración de Caché (Redis) ───────────────────────────────
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://redis:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}
+CACHE_TTL = 60 * 15 # 15 minutos por defecto

@@ -37,11 +37,20 @@ class EncomiendaQuerySet(models.QuerySet):
         )
 
     def con_relaciones(self):
+        """
+        select_related -> hace JOIN para ForeignKeys (1 sola query con JOIN)
+        prefetch_related -> hace query separada para relaciones inversas
+        Sin esto: 1 + N*4 queries (N = numero de encomiendas)
+        Con esto: 2 queries siempre, sin importar cuantas encomiendas haya
+        """
         return self.select_related(
-            'remitente',
-            'destinatario',
-            'ruta',
-            'empleado_registro'
+            'remitente',         # JOIN con tabla clientes (remitente)
+            'destinatario',      # JOIN con tabla clientes (destinatario)
+            'ruta',              # JOIN con tabla rutas
+            'empleado_registro', # JOIN con tabla empleados
+        ).prefetch_related(
+            'historial',         # query separada: SELECT ... WHERE encomienda_id IN (...)
+            'historial__empleado', # prefetch anidado del empleado del historial
         )
 
 
